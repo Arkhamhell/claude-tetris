@@ -1,0 +1,140 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    # Ignore issues that mention @claude (handled by claude.yml) and bot actors
+    if: |
+      !contains(github.event.issue.title, '@claude') &&
+      !contains(github.event.issue.body || '', '@claude') &&
+      !endsWith(github.actor, '[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Issue Triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          claude_args: >-
+            --allowed-tools
+            "Bash(gh issue view *),Bash(gh issue edit *),Bash(gh issue comment *),Bash(gh label list *),Bash(gh label create *),Bash(echo *)"
+          prompt: |
+            Eres un asistente de triage para el repositorio de Tetris en GitHub.
+
+            Se ha ${{ github.event.action == 'opened' && 'creado' || 'editado' }} el issue #${{ github.event.issue.number }} en el repositorio ${{ github.repository }}.
+
+            Sigue estos pasos en orden:
+
+            ---
+
+            ## PASO 1 — Leer el issue
+
+            Ejecuta:
+            ```
+            gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json title,body,labels,comments
+            ```
+
+            ---
+
+            ## PASO 2 — Asignar labels
+
+            1. Lista los labels existentes:
+               ```
+               gh label list --repo ${{ github.repository }}
+               ```
+            2. Elige entre 1 y 4 labels que mejor describan el issue. Considera estas categorías:
+               - **Tipo**: `bug`, `enhancement`, `question`, `documentation`
+               - **Área**: `gameplay`, `ui`, `performance`, `refactor`
+               - **Prioridad**: `priority: high`, `priority: medium`, `priority: low`
+            3. Si ningún label existente encaja, crea uno descriptivo y coherente:
+               ```
+               gh label create "nombre-del-label" --color "0075ca" --description "Descripción breve" --repo ${{ github.repository }}
+               ```
+            4. Aplica los labels elegidos:
+               ```
+               gh issue edit ${{ github.event.issue.number }} --add-label "label1,label2" --repo ${{ github.repository }}
+               ```
+
+            ---
+
+            ## PASO 3 — Redactar el diagnóstico (siempre en español)
+
+            Redacta un diagnóstico general con las siguientes secciones:
+
+            **📋 Resumen del problema**
+            Descripción concisa de qué se reporta o qué se solicita.
+
+            **🔍 Causa raíz probable**
+            Análisis técnico de qué puede estar causando el problema o qué requiere la mejora.
+            Ten en cuenta la arquitectura del proyecto:
+            - `index.html`: DOM skeleton, dos canvas (#board 300×600 px y #next-canvas 120×120 px), HUD (#score, #lines, #level), overlay reutilizado para PAUSE y GAME OVER.
+            - `style.css`: tema dark/retro con CSS variables y flexbox.
+            - `game.js`: toda la lógica del juego (~305 líneas). Estructuras clave: `board` (array 20×10, 0=vacío, 1-7=color), `current` y `next` ({type, shape, x, y}), `PIECES` (matrices indexadas 1-7), `COLORS` (indexado 0-7). Flujo: `init()` → `spawn()` → `requestAnimationFrame(loop)` → por frame: acumula `dropAccum`, baja pieza o llama `lockPiece()` → `merge()` → `clearLines()` → `spawn()`.
+
+            **📁 Archivos y áreas del código relacionados**
+            Lista los archivos y funciones/secciones específicas relevantes para este issue.
+
+            **💡 Enfoque sugerido para la solución**
+            Describe el approach recomendado para resolver el issue sin implementar el código todavía. Incluye qué funciones modificar o crear.
+
+            **⚠️ Notas adicionales**
+            Edge cases, riesgos de regresión, o consideraciones de compatibilidad a tener en cuenta.
+
+            ---
+
+            ## PASO 4 — Publicar el diagnóstico como comentario
+
+            Publica el diagnóstico en el issue con este formato exacto (reemplaza el contenido de las secciones con tu análisis):
+
+            ```
+            gh issue comment ${{ github.event.issue.number }} --repo ${{ github.repository }} --body "$(cat <<'BODY'
+            > 🤖 **Diagnóstico automático de Claude** · Issue #${{ github.event.issue.number }}
+
+            ---
+
+            ## 📋 Resumen del problema
+            [tu resumen aquí]
+
+            ## 🔍 Causa raíz probable
+            [tu análisis aquí]
+
+            ## 📁 Archivos y áreas del código relacionados
+            [lista de archivos/funciones aquí]
+
+            ## 💡 Enfoque sugerido para la solución
+            [tu propuesta aquí]
+
+            ## ⚠️ Notas adicionales
+            [consideraciones aquí]
+
+            ---
+            *Labels aplicados: [lista los labels que aplicaste]*
+            BODY
+            )"
+            ```
+
+            ---
+
+            ## PASO 5 — Resumen en el log del workflow
+
+            Al finalizar, escribe en `$GITHUB_STEP_SUMMARY`:
+            ```
+            echo "## 🤖 Triage completado — Issue #${{ github.event.issue.number }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Labels aplicados:** [lista aquí]" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Resumen del diagnóstico:** [2-3 líneas del diagnóstico]" >> $GITHUB_STEP_SUMMARY
+            ```
