@@ -72,6 +72,8 @@ jobs:
 
             ## PASO 3 — Redactar el diagnóstico (siempre en español)
 
+            > **Importante sobre el formato:** Todo el contenido que redactes debe estar escrito en Markdown válido que GitHub pueda renderizar (GitHub-Flavored Markdown). Usa encabezados (`##`, `###`), listas (`-` o `1.`), **negrita**, _cursiva_, bloques de código con triple backtick indicando el lenguaje (por ejemplo ` ```js `), enlaces y tablas cuando aporten claridad. No uses HTML crudo ni formato que GitHub no soporte.
+
             Redacta un diagnóstico general con las siguientes secciones:
 
             **📋 Resumen del problema**
