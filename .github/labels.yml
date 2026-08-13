@@ -1,0 +1,104 @@
+# Taxonomía de labels del repo, versionada como fuente de verdad.
+# El workflow `claude-issue-triage.yml` la sincroniza a GitHub en cada ejecución
+# (crea los que faltan, actualiza color/descripción de los existentes; nunca borra).
+
+# --- Labels por defecto de GitHub (ya existían en el repo) ---
+- name: bug
+  color: "d73a4a"
+  description: Something isn't working
+
+- name: enhancement
+  color: "a2eeef"
+  description: New feature or request
+
+- name: documentation
+  color: "0075ca"
+  description: Improvements or additions to documentation
+
+- name: question
+  color: "d876e3"
+  description: Further information is requested
+
+- name: accessibility
+  color: "f143ab"
+  description: Barrier affecting people with disabilities
+
+- name: duplicate
+  color: "cfd3d7"
+  description: This issue or pull request already exists
+
+- name: good first issue
+  color: "7057ff"
+  description: Good for newcomers
+
+- name: help wanted
+  color: "008672"
+  description: Extra attention is needed
+
+- name: invalid
+  color: "e4e669"
+  description: This doesn't seem right
+
+- name: wontfix
+  color: "ffffff"
+  description: This will not be worked on
+
+# --- Área del código afectada (mapea a la arquitectura descrita en CLAUDE.md) ---
+- name: area/gameplay
+  color: "1d76db"
+  description: "Lógica del juego: colisiones, rotación/wall kicks, locking, spawn"
+
+- name: area/render
+  color: "1d76db"
+  description: "Dibujado en canvas: draw(), ghost piece, next-canvas"
+
+- name: area/input
+  color: "1d76db"
+  description: Manejo de teclado y controles
+
+- name: area/ui
+  color: "1d76db"
+  description: "index.html / style.css: layout, panel de score, overlay"
+
+- name: area/scoring
+  color: "1d76db"
+  description: "Puntuación, niveles y velocidad de caída (LINE_SCORES, dropInterval)"
+
+- name: area/ci
+  color: "1d76db"
+  description: Workflows de GitHub Actions
+
+# --- Prioridad estimada ---
+- name: priority/high
+  color: "b60205"
+  description: Bloquea el juego o afecta a la mayoría de partidas
+
+- name: priority/medium
+  color: "fbca04"
+  description: Afecta a la experiencia pero tiene contorno
+
+- name: priority/low
+  color: "c2e0c6"
+  description: Cosmético o de bajo impacto
+
+# --- Complejidad estimada de la solución ---
+- name: complexity/S
+  color: "c5def5"
+  description: Cambio acotado a una función o pocas líneas
+
+- name: complexity/M
+  color: "c5def5"
+  description: Toca varias funciones o requiere ajustar constantes/estado
+
+- name: complexity/L
+  color: "c5def5"
+  description: Cambio estructural o con varias piezas del juego implicadas
+
+# --- Estado de triaje ---
+- name: needs-info
+  color: "d4c5f9"
+  description: Falta información para diagnosticar el issue
+
+- name: triaged
+  color: "0e8a16"
+  description: Ya fue analizado por el workflow de triaje de Claude

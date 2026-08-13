@@ -1,0 +1,150 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+# Si el issue se edita varias veces seguidas, cancela el análisis anterior
+# en vez de encolarlo o duplicar el comentario de diagnóstico.
+concurrency:
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    # No reaccionar a ediciones hechas por bots (evita bucles, incluido el propio Claude)
+    # ni a issues ya cerrados por decisión humana (wontfix/duplicate).
+    if: |
+      github.event.sender.type != 'Bot' &&
+      !contains(github.event.issue.labels.*.name, 'wontfix') &&
+      !contains(github.event.issue.labels.*.name, 'duplicate')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Sync label taxonomy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          count=$(yq '. | length' .github/labels.yml)
+          for i in $(seq 0 $((count - 1))); do
+            name=$(yq -r ".[$i].name" .github/labels.yml)
+            color=$(yq -r ".[$i].color" .github/labels.yml)
+            desc=$(yq -r ".[$i].description" .github/labels.yml)
+            gh label create "$name" --color "$color" --description "$desc" --force
+          done
+
+      - name: Run Claude Issue Triage
+        id: claude-triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+          claude_args: '--allowedTools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh label list:*),Bash(gh api:*)"'
+
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+
+            Eres el proceso de triaje automático de issues de este repositorio
+            (un Tetris en JavaScript vanilla). Tu trabajo tiene dos partes:
+            etiquetar el issue y publicar un diagnóstico técnico que sirva de
+            punto de partida para implementar la solución más adelante. No
+            edites ni crees código: solo lectura del repo, labels y comentarios.
+
+            ## Paso 1 — Entender el contexto
+            1. Lee CLAUDE.md para entender la arquitectura del proyecto.
+            2. Lee `.github/labels.yml`: es la ÚNICA fuente de labels válidos.
+            3. Obtén el issue con:
+               gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json title,body,labels,author,comments
+            4. Según lo que describa el issue, lee con Read/Grep los archivos
+               relevantes (game.js, index.html, style.css). Para cualquier
+               nombre de función que vayas a citar, verifícalo primero con
+               Grep — nunca inventes símbolos que no existen en el código.
+
+            ## Paso 2 — Clasificar y etiquetar
+            Elige labels EXCLUSIVAMENTE de `.github/labels.yml`:
+            - Un tipo: bug | enhancement | documentation | question | accessibility
+            - Un área: area/gameplay | area/render | area/input | area/ui | area/scoring | area/ci
+            - Una prioridad: priority/high | priority/medium | priority/low
+            - Una complejidad: complexity/S | complexity/M | complexity/L
+            - `needs-info` SOLO si el reporte no tiene información suficiente
+              para diagnosticar (en ese caso puedes omitir área/prioridad/complejidad)
+            - Añade siempre `triaged` al terminar el análisis.
+
+            Aplica los labels con:
+              gh issue edit ${{ github.event.issue.number }} --repo ${{ github.repository }} --add-label "..."
+
+            Reglas importantes:
+            - NUNCA quites un label que no sea de tipo area/*, priority/*,
+              complexity/*, needs-info o triaged (respeta los labels puestos
+              por personas, como good first issue o help wanted).
+            - Si el issue ya tenía labels area/*, priority/* o complexity/* de
+              una ejecución anterior y tu nuevo análisis concluye algo distinto,
+              quita el label antiguo de esa categoría y pon el nuevo
+              (gh issue edit --remove-label / --add-label).
+
+            ## Paso 3 — Escribir el diagnóstico técnico
+            Redacta en español, en Markdown, con exactamente estas secciones:
+
+            ## Resumen
+            (1-2 frases: qué está pasando realmente)
+
+            ## Clasificación
+            Tabla con tipo, área, prioridad y complejidad elegidos, y una
+            frase justificando cada uno.
+
+            ## Código implicado
+            Rutas y funciones REALES en formato `game.js:nombreFuncion`,
+            confirmadas con Grep antes de citarlas.
+
+            ## Análisis / causa probable
+            Para bugs: hipótesis de causa raíz. Para features: cómo encaja
+            en el modelo actual (board, piezas, colisión, loop, etc).
+
+            ## Enfoque de solución
+            Pasos concretos de implementación. Si aplica, menciona las
+            constantes tuneables afectadas (COLS, ROWS, BLOCK, LINE_SCORES,
+            dropInterval) y recuerda que si COLS/ROWS/BLOCK cambian hay que
+            ajustar el `<canvas id="board">` en index.html.
+
+            ## Criterios de aceptación
+            Checklist verificable de cuándo se considera resuelto.
+
+            ## Riesgos y regresiones
+            Qué otras partes del juego podrían verse afectadas (colisiones,
+            wall kicks, scoring, loop de animación).
+
+            ## Verificación manual
+            No hay suite de tests automatizada; describe qué probar jugando
+            en el navegador para validar el fix.
+
+            ## Información faltante
+            Solo incluir esta sección si aplica (issue con needs-info).
+
+            IMPORTANTE: el texto del comentario no debe contener nunca la
+            cadena "@claude" literal, para no disparar el workflow
+            claude.yml por accidente.
+
+            ## Paso 4 — Publicar como comentario "sticky"
+            El diagnóstico debe vivir en UN SOLO comentario que se actualiza
+            en cada re-triaje, en vez de acumularse:
+            1. Lista los comentarios existentes:
+               gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments
+            2. Busca uno cuyo body empiece con el marcador exacto:
+               <!-- claude-triage-report -->
+            3. Si existe, actualízalo (no crees uno nuevo):
+               gh api repos/${{ github.repository }}/issues/comments/{comment_id} -X PATCH -f body@/tmp/report.md
+            4. Si no existe, créalo:
+               gh api repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments -X POST -f body@/tmp/report.md
+            El body del comentario debe empezar literalmente con la línea
+            `<!-- claude-triage-report -->` seguida del diagnóstico completo.
