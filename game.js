@@ -28,8 +28,9 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
-const GRID_LINE_DARK = '#22222e';
-const GRID_LINE_LIGHT = '#dcdce6';
+// GRID_LINE_DARK/GRID_LINE_LIGHT used to live here, but drawGrid() now reads
+// grid color from the active skin (see skins.js); the retro skin's
+// getTheme().gridColor getter reproduces the same light/dark values.
 const THEME_KEY = 'tetris-theme';
 
 const canvas = document.getElementById('board');
@@ -163,18 +164,13 @@ function updateHUD() {
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
-  context.globalAlpha = alpha ?? 1;
-  context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
-  context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
-  context.globalAlpha = 1;
+  const theme = getTheme();
+  const color = theme.colors[colorIndex];
+  theme.drawBlock(context, x * size, y * size, size, color, alpha ?? 1);
 }
 
 function drawGrid() {
-  ctx.strokeStyle = document.body.classList.contains('light') ? GRID_LINE_LIGHT : GRID_LINE_DARK;
+  ctx.strokeStyle = getTheme().gridColor;
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
     ctx.beginPath();
@@ -191,7 +187,9 @@ function drawGrid() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // fillRect below fully covers the canvas, making a prior clearRect dead work
+  ctx.fillStyle = getTheme().background;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   drawGrid();
 
   // board
