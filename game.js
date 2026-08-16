@@ -45,7 +45,11 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, linesOffset;
+
+function computeDropInterval(lvl) {
+  return Math.max(100, 1000 - (lvl - 1) * 90);
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -157,7 +161,7 @@ function spawn() {
 
 function updateHUD() {
   scoreEl.textContent = score.toLocaleString();
-  linesEl.textContent = lines;
+  linesEl.textContent = lines - linesOffset;
   levelEl.textContent = level;
 }
 
@@ -235,13 +239,13 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    closePauseMenu();
+    dropAccum = 0;
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    openPauseMenu();
   }
 }
 
@@ -264,11 +268,18 @@ function loop(ts) {
 function init() {
   board = createBoard();
   score = 0;
-  lines = 0;
-  level = 1;
+  level = getStartLevel();
+  // clearLines() recomputes level as Math.floor(lines / 10) + 1 whenever a
+  // line clears; biasing the internal `lines` counter here keeps that
+  // formula consistent with the chosen start level (and lets it keep
+  // leveling up correctly afterwards) without needing to touch clearLines().
+  // linesOffset is subtracted back out in updateHUD() so the on-screen
+  // LINES counter still starts at 0.
+  linesOffset = (level - 1) * 10;
+  lines = linesOffset;
   paused = false;
   gameOver = false;
-  dropInterval = 1000;
+  dropInterval = computeDropInterval(level);
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();
@@ -280,7 +291,26 @@ function init() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'Escape' && pauseMenuOpen && pauseMenuView === 'controls') {
+    e.preventDefault();
+    showMainView();
+    return;
+  }
+  if (e.code === 'KeyP' || e.code === 'Escape') {
+    e.preventDefault();
+    togglePause();
+    return;
+  }
+  if (pauseMenuOpen) {
+    // Only block default handling (page scroll, etc.) when focus is outside
+    // the menu itself, so native keyboard interaction with its <select> and
+    // <button> elements (arrow keys, Space to activate) keeps working.
+    const withinMenu = e.target && e.target.closest && e.target.closest('#pause-menu');
+    if (!withinMenu && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'KeyX'].includes(e.code)) {
+      e.preventDefault();
+    }
+    return;
+  }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
